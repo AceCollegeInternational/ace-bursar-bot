@@ -48,7 +48,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.level }}'\n  AND sr.admission_status = 'Active'\n  -- Search: full name must contain both extracted name parts\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, '')))\n      LIKE CONCAT('%', LOWER('{{ $json.name_part_1 }}'), '%')\n  )\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, '')))\n      LIKE CONCAT('%', LOWER('{{ $json.name_part_2 }}'), '%')\n  )\n  -- Security Gate: sender's phone (last 10 digits) must belong to an authorized party.\n  -- NOTE: the year tutor's phone is intentionally included here -- tutors are treated\n  -- as authorized for BOTH receipt submissions and text commands (balance/invoice/\n  -- status/opt-out). One of the three original duplicated queries had dropped this\n  -- subquery inconsistently; it is restored here for all callers.\n  AND (\n      RIGHT('{{ $json.sender_phone }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          (\n              SELECT RIGHT(fr.faculty_phone_no_1, 10)\n              FROM tb_faculty_registrations fr\n              WHERE fr.id = al.year_tutor_id\n          ),\n          '9162583300'\n      )\n  );",
+        "query": "SELECT \n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.level }}'\n  AND sr.admission_status = 'Active'\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_1 }}'), '%')\n  )\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_2 }}'), '%')\n  )\n  AND (\n      RIGHT('{{ $json.sender_phone }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          (\n              SELECT RIGHT(fr.faculty_phone_no_1, 10)\n              FROM tb_faculty_registrations fr\n              WHERE fr.id = al.year_tutor_id\n          ),\n          '9162583300'\n      )\n  )",
         "options": {
           "detailedOutput": false
         }
@@ -71,7 +71,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Classify the (now un-LIMITed) result set.\n// Gatekeeper Query has alwaysOutputData=true so a genuine zero-row match still\n// produces one item -- but when there are truly zero rows, MySQL's node emits a\n// placeholder item like {\"success\": true} with no student_id. Filtering on\n// student_id below is what keeps that placeholder from being counted as a match.\nconst rows = $input.all().map(item => item.json).filter(r => r && r.student_id);\nconst context = $('Extract Student Info').item.json.context;\n\nif (rows.length === 0) {\n    return {\n        status: \"not_found\",\n        student_id: null,\n        full_name: null,\n        level_name: null,\n        candidates: [],\n        context\n    };\n}\n\nif (rows.length === 1) {\n    return {\n        status: \"found\",\n        student_id: rows[0].student_id,\n        full_name: rows[0].full_name,\n        level_name: rows[0].level_name,\n        candidates: [],\n        context\n    };\n}\n\nreturn {\n    status: \"ambiguous\",\n    student_id: null,\n    full_name: null,\n    level_name: null,\n    candidates: rows.map(r => ({\n        student_id: r.student_id,\n        full_name: r.full_name,\n        level_name: r.level_name\n    })),\n    context\n};"
+        "jsCode": "// Classify the (now un-LIMITed) result set.\n// Gatekeeper Query has alwaysOutputData=true so a genuine zero-row match still\n// produces one item -- but when there are truly zero rows, MySQL's node emits a\n// placeholder item like {\"success\": true} with no student_id. Filtering on\n// student_id below is what keeps that placeholder from being counted as a match.\n//\n// Retry semantics: a \"not_found\" result from THIS node is not necessarily final.\n// The school's ERP promotes students to their next academic level before the new\n// session starts, so a parent may still refer to the student's pre-promotion level.\n// \"Step Up Level\" (downstream) decides whether a zero-row result is eligible for a\n// single retry one level up, and \"Classify Match (Retry)\" re-runs this same\n// classification against that retry query. retried_level is null here on the\n// first pass -- it is only ever set by \"Classify Match (Retry)\" once a retry has\n// actually been attempted, and it survives regardless of whether the retry itself\n// found a match, so downstream messaging can say both levels were checked.\nconst rows = $input.all().map(item => item.json).filter(r => r && r.student_id);\nconst context = $('Extract Student Info').item.json.context;\n\nif (rows.length === 0) {\n    return {\n        status: \"not_found\",\n        student_id: null,\n        full_name: null,\n        level_name: null,\n        candidates: [],\n        context,\n        retried_level: null\n    };\n}\n\nif (rows.length === 1) {\n    return {\n        status: \"found\",\n        student_id: rows[0].student_id,\n        full_name: rows[0].full_name,\n        level_name: rows[0].level_name,\n        candidates: [],\n        context,\n        retried_level: null\n    };\n}\n\nreturn {\n    status: \"ambiguous\",\n    student_id: null,\n    full_name: null,\n    level_name: null,\n    candidates: rows.map(r => ({\n        student_id: r.student_id,\n        full_name: r.full_name,\n        level_name: r.level_name\n    })),\n    context,\n    retried_level: null\n};"
       },
       "id": "8e4d9e31-b12d-4e4d-ce3d-4d5e6f708192",
       "name": "Classify Match",
@@ -117,7 +117,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const gk = $json; // { status, student_id, full_name, level_name, candidates, context }\nconst bursarPhone = \"+234 916 258 3300\";\n\nlet finalMessage = \"\";\n\nif (gk.status === \"not_found\") {\n  const retryHint = gk.context === \"receipt\"\n    ? 'Please resend the receipt with a clearer caption containing the full name and class (e.g. \"John Alabi, JSS2\").'\n    : 'Please resend your request with the correct full name and class (e.g. \"BALANCE: John Alabi, JSS2\").';\n\n  finalMessage = `❌ *Access Denied*\n\nWe couldn't find an active student matching that name/class linked to this phone number.\n\nThis usually means:\n- this phone number isn't on file as a parent/guardian/sponsor for that student, or\n- the name or class given doesn't match anyone active in our records.\n\n${retryHint}\n\n📞 Still stuck? Chat the Bursar's Office directly at ${bursarPhone}.`;\n} else if (gk.status === \"ambiguous\") {\n  const candidatesList = (gk.candidates || [])\n    .map(c => `- ${c.full_name} (${c.level_name})`)\n    .join('\\n');\n\n  const retryHint = gk.context === \"receipt\"\n    ? \"Please resend the receipt with the student's full name spelled out completely so we can tell them apart.\"\n    : \"Please reply with the student's full name (or another identifying detail) so we can tell them apart.\";\n\n  finalMessage = `📘 *Bursar's Office: Multiple Matches*\n\nWe found more than one student matching that name and class linked to this phone number:\n${candidatesList}\n\n${retryHint}\n\n📞 Need help? Chat the Bursar's Office directly at ${bursarPhone}.`;\n}\n\nreturn { ...gk, final_text: finalMessage };"
+        "jsCode": "const gk = $json; // { status, student_id, full_name, level_name, candidates, context, retried_level }\nconst bursarPhone = \"+234 916 258 3300\";\n\nlet finalMessage = \"\";\n\nif (gk.status === \"not_found\") {\n  const retryHint = gk.context === \"receipt\"\n    ? 'Please resend the receipt with a clearer caption containing the full name and class (e.g. \"John Alabi, JSS2\").'\n    : 'Please resend your request with the correct full name and class (e.g. \"BALANCE: John Alabi, JSS2\").';\n\n  // retried_level is set when a promotion-window retry (one level up) was\n  // attempted and still came back empty -- say so honestly instead of\n  // implying only the originally stated class was checked.\n  const retriedNote = gk.retried_level\n    ? `\\n\\nWe also checked *${gk.retried_level}* in case the student was recently promoted, but found no match there either.`\n    : \"\";\n\n  finalMessage = `\u274c *Access Denied*\n\nWe couldn't find an active student matching that name/class linked to this phone number.${retriedNote}\n\nThis usually means:\n- this phone number isn't on file as a parent/guardian/sponsor for that student, or\n- the name or class given doesn't match anyone active in our records.\n\n${retryHint}\n\n\ud83d\udcde Still stuck? Chat the Bursar's Office directly at ${bursarPhone}.`;\n} else if (gk.status === \"ambiguous\") {\n  const candidatesList = (gk.candidates || [])\n    .map(c => `- ${c.full_name} (${c.level_name})`)\n    .join('\\n');\n\n  const retryHint = gk.context === \"receipt\"\n    ? \"Please resend the receipt with the student's full name spelled out completely so we can tell them apart.\"\n    : \"Please reply with the student's full name (or another identifying detail) so we can tell them apart.\";\n\n  finalMessage = `\ud83d\udcd8 *Bursar's Office: Multiple Matches*\n\nWe found more than one student matching that name and class linked to this phone number:\n${candidatesList}\n\n${retryHint}\n\n\ud83d\udcde Need help? Chat the Bursar's Office directly at ${bursarPhone}.`;\n}\n\nreturn { ...gk, final_text: finalMessage };"
       },
       "id": "b2b2b2b2-0001-4005-8005-000000000001",
       "name": "Build Rejection Message",
@@ -153,7 +153,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const gk = $('Build Rejection Message').item.json;\n\nreturn {\n  status: gk.status,\n  student_id: gk.student_id,\n  full_name: gk.full_name,\n  level_name: gk.level_name,\n  candidates: gk.candidates,\n  context: gk.context\n};"
+        "jsCode": "const gk = $('Build Rejection Message').item.json;\n\nreturn {\n  status: gk.status,\n  student_id: gk.student_id,\n  full_name: gk.full_name,\n  level_name: gk.level_name,\n  candidates: gk.candidates,\n  context: gk.context,\n  retried_level: gk.retried_level\n};"
       },
       "id": "b4b4b4b4-0001-4007-8007-000000000001",
       "name": "Return Rejection Result",
@@ -162,6 +162,89 @@
       "position": [
         848,
         -280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decides whether a zero-row \"not_found\" result is eligible for a single\n// retry one level UP from what the parent stated.\n//\n// Why UP and not DOWN: the school's ERP promotes students to their next\n// academic level in tb_student_registrations before the new academic session\n// starts. During that window a parent naturally refers to the student's\n// current-as-they-know-it (pre-promotion) class, but the DB already has the\n// student in the next level up. So when the parent's stated level yields zero\n// rows, the retry must search the level ABOVE it (JSS2 stated -> retry JSS3).\n// This is the inverse of the \"Step Down Level\" pattern used elsewhere in the\n// live workflow for report-fetching, where the caller already knows the\n// current (post-promotion) level and steps DOWN to find historical records.\n//\n// Exactly one retry is attempted, never a cascade -- a parent being off by\n// more than one promotion cycle is a different problem and should surface as\n// not_found rather than silently searching the whole level list.\nconst LEVELS = [\n    \"junior secondary 1\",\n    \"junior secondary 2\",\n    \"junior secondary 3\",\n    \"senior secondary 1\",\n    \"senior secondary 2\",\n    \"senior secondary 3\"\n];\n\nconst ALIASES = {\n    \"jss1\": \"junior secondary 1\", \"js1\": \"junior secondary 1\",\n    \"jss2\": \"junior secondary 2\", \"js2\": \"junior secondary 2\",\n    \"jss3\": \"junior secondary 3\", \"js3\": \"junior secondary 3\",\n    \"sss1\": \"senior secondary 1\", \"ss1\": \"senior secondary 1\",\n    \"sss2\": \"senior secondary 2\", \"ss2\": \"senior secondary 2\",\n    \"sss3\": \"senior secondary 3\", \"ss3\": \"senior secondary 3\"\n};\n\nfunction resolveLevel(raw) {\n    const key = (raw || \"\").toLowerCase().trim();\n    if (LEVELS.includes(key)) return key;\n    if (ALIASES[key]) return ALIASES[key];\n    return null;\n}\n\nconst gk = $json; // Classify Match output: { status, student_id, full_name, level_name, candidates, context, retried_level }\n\nif (gk.status !== \"not_found\") {\n    // Only zero-row results are retry candidates; ambiguous/found are final as-is.\n    return { ...gk, retry: false, retried_level: null, retry_level_query: null };\n}\n\nconst statedLevel = $('Extract Student Info').item.json.level;\nconst resolved = resolveLevel(statedLevel);\n\nif (!resolved) {\n    // Unrecognized level -- flag and don't retry.\n    return { ...gk, retry: false, retried_level: null, retry_level_query: null };\n}\n\nconst idx = LEVELS.indexOf(resolved);\nif (idx === LEVELS.length - 1) {\n    // Already at the top level (senior secondary 3) -- nothing to step up to.\n    return { ...gk, retry: false, retried_level: null, retry_level_query: null };\n}\n\nconst steppedLevel = LEVELS[idx + 1];\n\nreturn { ...gk, retry: true, retried_level: steppedLevel, retry_level_query: steppedLevel };"
+      },
+      "id": "c1c1c1c1-0001-4008-8008-000000000001",
+      "name": "Step Up Level",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c2c2c2c2-0002-4008-8008-000000000002",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3c3c3c3-0001-4009-8009-000000000001",
+      "name": "Needs Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.retry_level_query }}'\n  AND sr.admission_status = 'Active'\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $('Extract Student Info').item.json.name_part_1 }}'), '%')\n  )\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $('Extract Student Info').item.json.name_part_2 }}'), '%')\n  )\n  AND (\n      RIGHT('{{ $('Extract Student Info').item.json.sender_phone }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          (\n              SELECT RIGHT(fr.faculty_phone_no_1, 10)\n              FROM tb_faculty_registrations fr\n              WHERE fr.id = al.year_tutor_id\n          ),\n          '9162583300'\n      )\n  )",
+        "options": {
+          "detailedOutput": false
+        }
+      },
+      "id": "c4c4c4c4-0001-4010-8010-000000000001",
+      "name": "Gatekeeper Query (Retry)",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        -160
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "Vgb0ivPJ4mQWicSh",
+          "name": "MySQL account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Same classification logic as \"Classify Match\", run against the retry\n// query's results (one level up from what the parent stated). Regardless of\n// whether this retry itself finds a match, retried_level is stamped so\n// downstream messaging can honestly say both the stated level and the\n// stepped-up level were checked.\nconst rows = $input.all().map(item => item.json).filter(r => r && r.student_id);\nconst context = $('Extract Student Info').item.json.context;\nconst retriedLevel = $('Step Up Level').item.json.retried_level;\n\nif (rows.length === 0) {\n    return {\n        status: \"not_found\",\n        student_id: null,\n        full_name: null,\n        level_name: null,\n        candidates: [],\n        context,\n        retried_level: retriedLevel\n    };\n}\n\nif (rows.length === 1) {\n    return {\n        status: \"found\",\n        student_id: rows[0].student_id,\n        full_name: rows[0].full_name,\n        level_name: rows[0].level_name,\n        candidates: [],\n        context,\n        retried_level: retriedLevel\n    };\n}\n\nreturn {\n    status: \"ambiguous\",\n    student_id: null,\n    full_name: null,\n    level_name: null,\n    candidates: rows.map(r => ({\n        student_id: r.student_id,\n        full_name: r.full_name,\n        level_name: r.level_name\n    })),\n    context,\n    retried_level: retriedLevel\n};"
+      },
+      "id": "c5c5c5c5-0001-4011-8011-000000000001",
+      "name": "Classify Match (Retry)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -160
       ]
     }
   ],
@@ -204,7 +287,7 @@
       "main": [
         [
           {
-            "node": "Is Found?",
+            "node": "Step Up Level",
             "type": "main",
             "index": 0
           }
@@ -239,6 +322,57 @@
         [
           {
             "node": "Return Rejection Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step Up Level": {
+      "main": [
+        [
+          {
+            "node": "Needs Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Retry?": {
+      "main": [
+        [
+          {
+            "node": "Gatekeeper Query (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Query (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Classify Match (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Match (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Is Found?",
             "type": "main",
             "index": 0
           }
