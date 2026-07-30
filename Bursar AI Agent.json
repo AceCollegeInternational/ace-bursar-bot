@@ -2737,44 +2737,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Get the caption from the image or document\nconst msg = $input.first().json.messages[0];\nconst rawCaption = (msg.image?.caption || msg.document?.caption || \"\").toLowerCase();\n\n// 2. REGEX for Level (Captures JS, JSS, SS, SSS + 1, 2, or 3)\nconst levelRegex = /(jss|js|sss|ss)\\s*([1-3])/i;\nconst levelMatch = rawCaption.match(levelRegex);\n\nlet normalizedLevel = \"unknown\";\nif (levelMatch) {\n    const type = levelMatch[1].toLowerCase();\n    const num = levelMatch[2];\n    \n    // Map abbreviations to the exact strings in your tb_academic_levels table\n    if (type.includes('j')) {\n        normalizedLevel = `junior secondary ${num}`;\n    } else if (type.includes('s')) {\n        normalizedLevel = `senior secondary ${num}`;\n    }\n}\n\n// 3. Extract and Clean Student Name\n// Removes the level abbreviation and common \"noise\" words\nlet cleanedName = rawCaption\n    .replace(levelRegex, \"\") \n    .replace(/(payment|attached|receipt|of|fees|school|student|name|is|at|the|dear|bursar)/gi, \"\")\n    .replace(/[^\\w\\s]/g, \"\") // Remove punctuation\n    .trim();\n\n// 4. Split name into individual words for the SQL query\n// We filter out any remaining short words (less than 2 chars)\nconst nameParts = cleanedName.split(/\\s+/).filter(part => part.length > 2);\n\n// We ensure at least two parts are sent to SQL. \n// If the parent only wrote one name, part 2 will repeat part 1 to avoid a query error.\nconst part1 = nameParts[0] || \"unknown\";\nconst part2 = nameParts[1] || part1;\n\nreturn {\n    student_name_raw: cleanedName,\n    name_part_1: part1,\n    name_part_2: part2,\n    level: normalizedLevel,\n    raw_caption: rawCaption\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -1152,
-        -1808
-      ],
-      "id": "2a4d8055-e78d-4215-a5de-e5f16e71a5b2",
-      "name": "Gatekeeper Code"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT \n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name,\n    'True' AS is_authorized,\n    -- Passing the original message object through to the next nodes\n    '{{ JSON.stringify($node[\"WhatsApp Trigger\"].json.messages) }}' AS raw_messages\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.level }}'\n  AND sr.admission_status = 'Active'\n  -- Search: Check if the full name contains Name Part 1 (franc)\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_1 }}'), '%')\n  )\n  -- Search: Check if the full name also contains Name Part 2 (abel)\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_2 }}'), '%')\n  )\n  -- Security Gate: Phone Number Check (Last 10 digits)\n  AND (\n      RIGHT('{{ $(\"WhatsApp Trigger\").item.json.messages[0].from }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          (\n              SELECT RIGHT(fr.faculty_phone_no_1, 10)\n              FROM tb_faculty_registrations fr\n              WHERE fr.id = al.year_tutor_id\n          ),\n          '9162583300'\n      )\n  )\nLIMIT 1;",
-        "options": {
-          "detailedOutput": false
-        }
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        -976,
-        -1808
-      ],
-      "id": "42a808f1-11ae-4506-b3e3-c608ddd5a1c6",
-      "name": "Gatekeeper SQL",
-      "alwaysOutputData": true,
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\n\nreturn {\n  student_id: raw.student_id,\n  full_name: raw.full_name,\n  level_name: raw.level_name,\n  is_authorized: raw.is_authorized,\n  // Parse the string back into a JSON object\n  messages: JSON.parse(raw.raw_messages)\n};"
+        "jsCode": "const result = $input.first().json;\n\nreturn {\n  student_id: result.student_id,\n  full_name: result.full_name,\n  level_name: result.level_name,\n  is_authorized: true,\n  messages: $('WhatsApp Trigger').first().json.messages\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2787,43 +2750,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Extract the text correctly from the nested 'data' object\nconst inputData = $input.first().json;\nconst rawResponse = (inputData.data?.text || \"\").toLowerCase().trim();\n\n// 2. REGEX for Level (JS/JSS/SS/SSS 1-3)\nconst levelRegex = /(jss|js|sss|ss)\\s*([1-3])/i;\nconst levelMatch = rawResponse.match(levelRegex);\n\nlet normalizedLevel = \"unknown\";\nif (levelMatch) {\n    const type = levelMatch[1].toLowerCase();\n    const num = levelMatch[2];\n    \n    // Normalize to database strings\n    if (type.includes('j')) {\n        normalizedLevel = `junior secondary ${num}`;\n    } else if (type.includes('s')) {\n        normalizedLevel = `senior secondary ${num}`;\n    }\n}\n\n// 3. Extract and Clean Student Name\nlet cleanedName = rawResponse\n    .replace(levelRegex, \"\") \n    .replace(/(payment|attached|receipt|fees|school|student|name|ward|details)/gi, \"\")\n    .replace(/[^\\w\\s]/g, \"\") // Remove punctuation\n    .trim();\n\n// 4. Split name into parts for SQL\nconst nameParts = cleanedName.split(/\\s+/).filter(part => part.length > 2);\n\nconst part1 = nameParts[0] || \"unknown\";\nconst part2 = nameParts[1] || part1;\n\nreturn {\n    student_name_raw: cleanedName,\n    name_part_1: part1,\n    name_part_2: part2,\n    level: normalizedLevel,\n    raw_response: rawResponse\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -640,
-        -1568
-      ],
-      "id": "57a75503-167d-4ab5-9dc2-a7e718cafbd6",
-      "name": "Gatekeeper Code2"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT \n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name,\n    'True' AS is_authorized,\n    -- Passing the original message object through to the next nodes\n    '{{ JSON.stringify($node[\"WhatsApp Trigger\"].json.messages) }}' AS raw_messages\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.level }}'\n  AND sr.admission_status = 'Active'\n  -- Search: Check if the full name contains Name Part 1 (franc)\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_1 }}'), '%')\n  )\n  -- Search: Check if the full name also contains Name Part 2 (abel)\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_2 }}'), '%')\n  )\n  -- Security Gate: Phone Number Check (Last 10 digits)\n  AND (\n      RIGHT('{{ $(\"WhatsApp Trigger\").item.json.messages[0].from }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          (\n              SELECT RIGHT(fr.faculty_phone_no_1, 10)\n              FROM tb_faculty_registrations fr\n              WHERE fr.id = al.year_tutor_id\n          ),\n          '9162583300'\n      )\n  )\nLIMIT 1;",
-        "options": {
-          "detailedOutput": false
-        }
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        -1152,
-        -1376
-      ],
-      "id": "69277c76-5e1a-4c5c-9969-5094e057c4da",
-      "name": "Gatekeeper SQL1",
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\n\nreturn {\n  student_id: raw.student_id,\n  full_name: raw.full_name,\n  level_name: raw.level_name,\n  is_authorized: raw.is_authorized,\n  // Parse the string back into a JSON object\n  messages: JSON.parse(raw.raw_messages)\n};"
+        "jsCode": "const result = $input.first().json;\n\nreturn {\n  student_id: result.student_id,\n  full_name: result.full_name,\n  level_name: result.level_name,\n  is_authorized: true,\n  messages: $('WhatsApp Trigger').first().json.messages\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2833,54 +2760,6 @@
       ],
       "id": "081ce10e-a1ab-4bcc-9242-0227d513a552",
       "name": "Rehydrate Data2"
-    },
-    {
-      "parameters": {
-        "jsCode": "// 1. Get data from the Normalizer node\nconst input = $json;\n\n// 2. Clean the name provided by the normalizer\nconst studentName = (input.student_name || \"\").toLowerCase().trim();\n\n// 3. Split name into parts for the SQL search\n// We take the first two words of the name to search across the 3 DB columns\nconst nameParts = studentName.split(/\\s+/).filter(part => part.length > 2);\n\nconst part1 = nameParts[0] || \"unknown\";\nconst part2 = nameParts[1] || part1;\n\nreturn {\n    student_name_raw: studentName,\n    name_part_1: part1,\n    name_part_2: part2,\n    level: input.normalized_level || \"unknown\",\n    // Pass intent and other metadata through for downstream use\n    intent: input.intent,\n    academic_session: input.academic_session,\n    term: input.term\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -1072,
-        -880
-      ],
-      "id": "b8751ffd-c0ae-46bd-8406-2ed1e96e144f",
-      "name": "Gatekeeper I-1"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT \n    sr.id AS student_id,\n    CONCAT(sr.last_name, ' ', sr.first_name, ' ', COALESCE(sr.other_name, '')) AS full_name,\n    al.level_name,\n    'True' AS is_authorized,\n    -- Store the intent/session/term in a JSON string to pass through\n    '{{ JSON.stringify({ intent: $json.intent, session: $json.academic_session, term: $json.term }) }}' AS metadata\nFROM tb_student_registrations sr\nJOIN tb_academic_levels al ON sr.level_id = al.id\nWHERE al.level_name = '{{ $json.level }}'\n  AND sr.admission_status = 'Active'\n  -- Search: Check if the full name contains both name parts\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_1 }}'), '%')\n  )\n  AND (\n      LOWER(CONCAT_WS(' ', sr.last_name, sr.first_name, COALESCE(sr.other_name, ''))) \n      LIKE CONCAT('%', LOWER('{{ $json.name_part_2 }}'), '%')\n  )\n  -- Security Gate: Phone Number Check (Sender's number vs Parent/Guardian records)\n  AND (\n      RIGHT('{{ $(\"WhatsApp Trigger\").item.json.messages[0].from }}', 10) IN (\n          RIGHT(sr.father_phone_no_1, 10), RIGHT(sr.father_phone_no_2, 10),\n          RIGHT(sr.mother_phone_no_1, 10), RIGHT(sr.mother_phone_no_2, 10),\n          RIGHT(sr.guardian_phone_no_1, 10), RIGHT(sr.guardian_phone_no_2, 10),\n          RIGHT(sr.sponsor_phone_no_1, 10), RIGHT(sr.sponsor_phone_no_2, 10),\n          '9162583300'\n      )\n  )\nLIMIT 1;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        -928,
-        -880
-      ],
-      "id": "862bb46f-65e3-4918-a7a7-88d54f2a7ec5",
-      "name": "Gatekeeper I-2",
-      "alwaysOutputData": true,
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// 1. Check if the incoming item has a student_id\n// If MySQL returned an empty object because of \"Always Output Data\", student_id will be undefined\nconst studentFound = !!$json.student_id;\nconst normalizer = $('Normalizer').item.json;\n\n// 2. Safely parse metadata\nlet meta = {};\nif (studentFound && $json.metadata) {\n    try {\n        meta = JSON.parse($json.metadata);\n    } catch (e) {\n        meta = {};\n    }\n}\n\n// 3. Construct a complete object even on \"Miss\"\nreturn {\n  // --- Mandatory for Switch2 ---\n  match_found: studentFound,\n  is_ambiguous: false, \n  is_retry: normalizer.is_retry || false,\n\n  // --- Data for the next nodes ---\n  intent: meta.intent || normalizer.intent,\n  original_query: normalizer.student_name,\n  term: meta.term || normalizer.term,\n  academic_session: meta.session || normalizer.academic_session,\n  \n  // --- Null safety for the Success path ---\n  student_id: $json.student_id || null,\n  full_name: $json.full_name || null,\n  \n  // --- Metadata for Error Messaging ---\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -784,
-        -880
-      ],
-      "id": "caf6559b-7ce7-4fb7-b0ac-4510fd5bfb8e",
-      "name": "Gatekeeper I-3"
     },
     {
       "parameters": {
@@ -2929,7 +2808,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Gatekeeper I-3\nconst gatekeeper = $('Gatekeeper I-3').item.json;\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n  const intent = gatekeeper.intent.toUpperCase();\n  const shortLevel = gatekeeper.normalized_level\n    .replace('junior secondary', 'JSS')\n    .replace('senior secondary', 'SSS')\n    .replace('primary', 'PRI')\n    .toUpperCase();\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.original_query}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again using the format below:*\n\n💡 *Correct Format Example:*\n${intent}: [Full Name], ${shortLevel}, ${gatekeeper.academic_session}, ${gatekeeper.term}`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
+        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Reshape Gatekeeper Result\nconst gatekeeper = $('Reshape Gatekeeper Result').item.json;\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n  const intent = gatekeeper.intent.toUpperCase();\n  const shortLevel = gatekeeper.normalized_level\n    .replace('junior secondary', 'JSS')\n    .replace('senior secondary', 'SSS')\n    .replace('primary', 'PRI')\n    .toUpperCase();\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.original_query}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again using the format below:*\n\n💡 *Correct Format Example:*\n${intent}: [Full Name], ${shortLevel}, ${gatekeeper.academic_session}, ${gatekeeper.term}`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -2939,40 +2818,6 @@
       ],
       "id": "ba83f49d-8533-47e2-91e2-3a478cbac058",
       "name": "Aggregate"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "d383da71-0a38-4efa-b094-f1cc5bb71db0",
-              "leftValue": "={{ Object.keys($json).length > 0 }}",
-              "rightValue": 0,
-              "operator": {
-                "type": "boolean",
-                "operation": "false",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -816,
-        -1808
-      ],
-      "id": "3314e273-6026-4359-8b08-b6eaa786ffa8",
-      "name": "Not Authorized?"
     },
     {
       "parameters": {
@@ -3021,7 +2866,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Gatekeeper I-3\nconst gatekeeper = $('Gatekeeper Code').item.json;\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.raw_caption}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again.*`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
+        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Gatekeeper Call (Receipt)\nconst gatekeeper = { raw_caption: $('Gatekeeper Call (Receipt)').item.json.raw_text };\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.raw_caption}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again.*`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3059,7 +2904,7 @@
         "operation": "send",
         "phoneNumberId": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
         "recipientPhoneNumber": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}",
-        "textBody": "=We found multiple students matching that name: {{ $('Gatekeeper Code').first().json.raw_caption.split(' ').slice(0, -1).join(' ') }}.\n\n    Please restart the process. Send the transaction receipt with the Full Name and Class again to help us identify the correct student.",
+        "textBody": "=We found multiple students matching that name: {{ ($('Has caption?').first().json.messages[0].image?.caption || $('Has caption?').first().json.messages[0].document?.caption || '').toLowerCase().split(' ').slice(0, -1).join(' ') }}.\n\n    Please restart the process. Send the transaction receipt with the Full Name and Class again to help us identify the correct student.",
         "additionalFields": {}
       },
       "type": "n8n-nodes-base.whatsApp",
@@ -3834,113 +3679,35 @@
     },
     {
       "parameters": {
-        "url": "http://109.199.112.214:8080/api/fetch.php",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "student",
-              "value": "={{ $('Switch1').item.json.full_name }}"
-            },
-            {
-              "name": "level",
-              "value": "={{ $('Switch1').item.json.level_name }}"
-            }
-          ]
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GATEKEEPER_SUBWORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Gatekeeper Subworkflow"
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {}
-          ]
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "raw_text": "={{ $json.messages[0].image?.caption || $json.messages[0].document?.caption || '' }}",
+            "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
+            "context": "receipt"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
+      "id": "a1a1a1a1-0001-4001-8001-000000000001",
+      "name": "Gatekeeper Call (Receipt)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [
-        416,
-        -32
-      ],
-      "id": "8fff529f-c6d5-4054-84fc-4c37f96910a5",
-      "name": "Request Result",
-      "retryOnFail": false,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $( 'WhatsApp Trigger' ).first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $node[\"WhatsApp Trigger\"].json.messages[0].from }}",
-        "messageType": "image",
-        "mediaPath": "useMedian8n",
-        "additionalFields": {
-          "mediaCaption": "=📘 *Admin Office: Academic Performance Report*\n\nStudent: {{ $('Switch1').first().json.full_name }}}\nLevel: {{ $json.level_name }}\n\n_Attached is the academic performance report for term {{ $('Fetch Term Defaults').item.json.term_of_session }}, {{ $('Fetch Term Defaults').item.json.academic_session }} session_"
-        }
-      },
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        944,
-        -48
-      ],
-      "id": "e80eb3a1-6031-4db3-a334-b7b03737b44c",
-      "name": "Result Message",
-      "webhookId": "0a13d82d-b577-454f-9806-95a71644da28",
-      "credentials": {
-        "whatsAppApi": {
-          "id": "iwUoaQqIF8NEeuFA",
-          "name": "WhatsApp account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT COALESCE(\n    (\n        SELECT SUM(ar.actual_value) -\n               COALESCE(SUM(asp.total_paid_for_period), 0)\n        FROM tb_account_receivables ar\n        LEFT JOIN (\n            SELECT student_id, fee_id,\n                   academic_session, term_of_session,\n                   SUM(payment_to_date) AS total_paid_for_period\n            FROM tb_account_student_payments\n            GROUP BY student_id, fee_id,\n                     academic_session, term_of_session\n        ) asp ON asp.student_id = ar.student_id\n              AND asp.fee_id = ar.fee_id\n              AND asp.academic_session = ar.academic_session\n              AND asp.term_of_session = ar.term_of_session\n        WHERE ar.student_id = '{{ $('Switch1').item.json.student_id }}'\n          AND ar.academic_session >= 2024\n        HAVING SUM(ar.actual_value) -\n               COALESCE(SUM(asp.total_paid_for_period), 0) > 0\n    ),\n    0.00\n) AS total_outstanding;\n ",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        80,
-        48
-      ],
-      "id": "458d8e41-e0c1-4de8-918c-cf4da7df1389",
-      "name": "Outstanding Exists?",
-      "alwaysOutputData": true,
-      "retryOnFail": true,
-      "waitBetweenTries": 3000,
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $( 'WhatsApp Trigger' ).first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $node[\"WhatsApp Trigger\"].json.messages[0].from }}",
-        "textBody": "=📘 *Bursar's Office: Balance Exists!*\n\nYou have unpaid fees for {{ $('Switch1').first().json.full_name }} totalling NGN{{ $json.total_outstanding }}. Settle the fees to view the academic report.\n\nYou can verify the details by using this template => [BILL: Student Name, JS1, 2025, 3]\n\nThanks\n\n_If you need any assistance regarding your payments, do not hesitate to contact the Bursar via WhatsApp chat on 09162583300_",
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        416,
-        144
-      ],
-      "id": "9f7cda0f-9811-4ad8-8dc7-00a9fd0923bd",
-      "name": "Not Billed1",
-      "webhookId": "0a13d82d-b577-454f-9806-95a71644da28",
-      "credentials": {
-        "whatsAppApi": {
-          "id": "iwUoaQqIF8NEeuFA",
-          "name": "WhatsApp account"
-        }
-      }
+        -880,
+        -1632
+      ]
     },
     {
       "parameters": {
@@ -3953,12 +3720,12 @@
           },
           "conditions": [
             {
-              "id": "be3dc2b9-4936-4fd2-89ea-4b928695296f",
-              "leftValue": "={{ parseFloat($json.total_outstanding) }}",
-              "rightValue": 1,
+              "id": "a1a1a1a1-0002-4001-8001-000000000002-cond",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "found",
               "operator": {
-                "type": "number",
-                "operation": "lt"
+                "type": "string",
+                "operation": "equals"
               }
             }
           ],
@@ -3966,62 +3733,141 @@
         },
         "options": {}
       },
+      "id": "a1a1a1a1-0002-4001-8001-000000000002",
+      "name": "Gatekeeper Result (Receipt)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        256,
-        48
-      ],
-      "id": "e417e981-54d2-4660-958f-9b29945560ac",
-      "name": "Cleared to Check?"
+        -720,
+        -1632
+      ]
     },
     {
       "parameters": {
-        "url": "http://109.199.112.214:8080/api/fetch.php",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "student",
-              "value": "={{ $('Switch1').item.json.full_name }}"
-            },
-            {
-              "name": "level",
-              "value": "={{ $('Step Down Level').item.json.level_name }}"
-            }
-          ]
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GATEKEEPER_SUBWORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Gatekeeper Subworkflow"
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {}
-          ]
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "raw_text": "={{ $json.data?.text || '' }}",
+            "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
+            "context": "receipt"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
+      "id": "a2a2a2a2-0001-4002-8002-000000000001",
+      "name": "Gatekeeper Call (Form)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [
-        768,
-        64
-      ],
-      "id": "5a416615-202f-4138-9cdb-d8a073620035",
-      "name": "Request Result1",
-      "retryOnFail": false,
-      "onError": "continueErrorOutput"
+        -1056,
+        -1200
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Ordered list of academic levels (ascending)\nconst LEVELS = [\n  \"Junior Secondary 1\",\n  \"Junior Secondary 2\",\n  \"Junior Secondary 3\",\n  \"Senior Secondary 1\",\n  \"Senior Secondary 2\",\n  \"Senior Secondary 3\"\n];\n\n// Common abbreviations mapped to the same index, in case the ERP\n// sends short forms instead of full names\nconst ALIASES = {\n  \"js1\": 0, \"js 1\": 0,\n  \"js2\": 1, \"js 2\": 1,\n  \"js3\": 2, \"js 3\": 2,\n  \"ss1\": 3, \"ss 1\": 3,\n  \"ss2\": 4, \"ss 2\": 4,\n  \"ss3\": 5, \"ss 3\": 5\n};\n\nfunction findLevelIndex(levelName) {\n  const normalized = (levelName || \"\").trim().toLowerCase();\n\n  // Try exact match against full names first\n  const exactIndex = LEVELS.findIndex(\n    (l) => l.toLowerCase() === normalized\n  );\n  if (exactIndex !== -1) return exactIndex;\n\n  // Fall back to alias lookup\n  if (normalized in ALIASES) return ALIASES[normalized];\n\n  return -1; // Unrecognized level\n}\n\nfor (const item of $input.all()) {\n  const originalLevel = $('Switch1').item.json.level_name;\n  const currentIndex = findLevelIndex(originalLevel);\n\n  if (currentIndex === -1) {\n    // Level not recognized — leave as-is and flag it so the failure\n    // is visible downstream instead of silently retrying with bad data\n    item.json.level_name = originalLevel;\n    item.json.level_step_down_failed = true;\n    continue;\n  }\n\n  if (currentIndex === 0) {\n    // Already at the lowest level (JS1) — nothing to step down to.\n    // Keep original level; the resit case (no promotion) should have\n    // succeeded on the first try anyway.\n    item.json.level_name = originalLevel;\n  } else {\n    item.json.level_name = LEVELS[currentIndex - 1];\n  }\n\n  item.json.full_name = $('Switch1').item.json.full_name;\n}\n\nreturn $input.all();"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a2a2a2a2-0002-4002-8002-000000000002-cond",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "found",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
+      "id": "a2a2a2a2-0002-4002-8002-000000000002",
+      "name": "Gatekeeper Result (Form)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -896,
+        -1200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}",
+        "textBody": "=❌ *Access Denied*\n\nI couldn't verify a student matching the name/class you supplied against this phone number, or the details matched more than one student. Please visit the school office to update your records, or try again with the exact registered name and class.",
+        "additionalFields": {}
+      },
+      "id": "a2a2a2a2-0003-4002-8002-000000000003",
+      "name": "Not Authorized Message (Form)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        -896,
+        -1080
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GATEKEEPER_SUBWORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Gatekeeper Subworkflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "raw_text": "={{ ($json.student_name || '') + ' ' + ($json.normalized_level || '') }}",
+            "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
+            "context": "command"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "a3a3a3a3-0001-4003-8003-000000000001",
+      "name": "Gatekeeper Call (Command)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -976,
+        -704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reshape the sub-workflow's generic {status, ...} result into the shape\n// If1 / Switch2 expect, merging in Normalizer's parsed intent/session/term.\nconst gk = $json;\nconst normalizer = $('Normalizer').item.json;\n\nreturn {\n  match_found: gk.status === 'found',\n  is_ambiguous: gk.status === 'ambiguous',\n  is_retry: normalizer.is_retry || false,\n\n  intent: normalizer.intent,\n  original_query: normalizer.student_name,\n  term: normalizer.term,\n  academic_session: normalizer.academic_session,\n\n  student_id: gk.student_id || null,\n  full_name: gk.full_name || null,\n  candidates: gk.candidates || [],\n\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
+      },
+      "id": "a3a3a3a3-0002-4003-8003-000000000002",
+      "name": "Reshape Gatekeeper Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        608,
-        64
-      ],
-      "id": "2175afd4-354f-4505-a5f6-c35de4edd7d0",
-      "name": "Step Down Level"
+        -832,
+        -704
+      ]
     }
   ],
   "pinData": {
@@ -4357,7 +4203,7 @@
       "main": [
         [
           {
-            "node": "Gatekeeper Code",
+            "node": "Gatekeeper Call (Receipt)",
             "type": "main",
             "index": 0
           }
@@ -4397,7 +4243,7 @@
       "main": [
         [
           {
-            "node": "Gatekeeper Code2",
+            "node": "Gatekeeper Call (Form)",
             "type": "main",
             "index": 0
           }
@@ -4607,7 +4453,7 @@
       "main": [
         [
           {
-            "node": "Gatekeeper I-1",
+            "node": "Gatekeeper Call (Command)",
             "type": "main",
             "index": 0
           }
@@ -4893,28 +4739,6 @@
         ]
       ]
     },
-    "Gatekeeper Code": {
-      "main": [
-        [
-          {
-            "node": "Gatekeeper SQL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gatekeeper SQL": {
-      "main": [
-        [
-          {
-            "node": "Not Authorized?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Rehydrate Data": {
       "main": [
         [
@@ -4926,71 +4750,11 @@
         ]
       ]
     },
-    "Gatekeeper Code2": {
-      "main": [
-        [
-          {
-            "node": "Gatekeeper SQL1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Rehydrate Data2": {
       "main": [
         [
           {
             "node": "Get student details",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gatekeeper SQL1": {
-      "main": [
-        [
-          {
-            "node": "Rehydrate Data2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gatekeeper I-1": {
-      "main": [
-        [
-          {
-            "node": "Gatekeeper I-2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gatekeeper I-2": {
-      "main": [
-        [
-          {
-            "node": "Gatekeeper I-3",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gatekeeper I-3": {
-      "main": [
-        [
-          {
-            "node": "If1",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Switch2",
             "type": "main",
             "index": 0
           }
@@ -5013,24 +4777,6 @@
         [
           {
             "node": "Typo Error Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Not Authorized?": {
-      "main": [
-        [
-          {
-            "node": "Fetch First Names1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Rehydrate Data",
             "type": "main",
             "index": 0
           }
@@ -5300,69 +5046,85 @@
         ]
       ]
     },
-    "Request Result": {
+    "Gatekeeper Call (Receipt)": {
       "main": [
         [
           {
-            "node": "Result Message",
+            "node": "Gatekeeper Result (Receipt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Result (Receipt)": {
+      "main": [
+        [
+          {
+            "node": "Rehydrate Data",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Step Down Level",
+            "node": "Fetch First Names1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Outstanding Exists?": {
+    "Gatekeeper Call (Form)": {
       "main": [
         [
           {
-            "node": "Cleared to Check?",
+            "node": "Gatekeeper Result (Form)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Cleared to Check?": {
+    "Gatekeeper Result (Form)": {
       "main": [
         [
           {
-            "node": "Request Result",
+            "node": "Rehydrate Data2",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Not Billed1",
+            "node": "Not Authorized Message (Form)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Step Down Level": {
+    "Gatekeeper Call (Command)": {
       "main": [
         [
           {
-            "node": "Request Result1",
+            "node": "Reshape Gatekeeper Result",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Request Result1": {
+    "Reshape Gatekeeper Result": {
       "main": [
         [
           {
-            "node": "Result Message",
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Switch2",
             "type": "main",
             "index": 0
           }
