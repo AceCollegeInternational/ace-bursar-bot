@@ -2365,92 +2365,6 @@
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.is_ambiguous === true }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    },
-                    "id": "9263d5f7-ff32-4211-9f3a-130b0321f550"
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "f6390f19-7205-4b7d-b2eb-924f115bb2fd",
-                    "leftValue": "={{ $json.match_found === false && !$json.is_retry }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "fadd23e1-1095-4f26-8647-5e72bd06c4e3",
-                    "leftValue": "={{ $json.match_found === true && $json.is_ambiguous === false }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [
-        -624,
-        -896
-      ],
-      "id": "83e7c290-eb5a-47fa-bdd7-1d965ef539f1",
-      "name": "Switch2"
-    },
-    {
-      "parameters": {
         "operation": "send",
         "phoneNumberId": "={{ $( 'WhatsApp Trigger' ).first().json.metadata.phone_number_id }}",
         "recipientPhoneNumber": "={{ $node[\"WhatsApp Trigger\"].json.messages[0].from }}",
@@ -2549,30 +2463,6 @@
       ],
       "id": "3a654e93-42f4-4c32-b52a-904034af2412",
       "name": "Switch3"
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $( 'WhatsApp Trigger' ).first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $node[\"WhatsApp Trigger\"].json.messages[0].from }}",
-        "textBody": "=📘 Bursar's Office: Student Not Found  \nI'm sorry, but I found multiple records for your request:\n\"{{ $node[\"Normalizer\"].json.messages[0].text.body }}\".  \nPossible reasons: \n- Someone in the class shares similar names with the student. \n\nRecommendation: \n- Use another one of the registered names for the request.\n\n📞 Need Help? Please CHAT the Bursar Office directly at +234 916 258 3300.",
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        -464,
-        -1040
-      ],
-      "id": "9e06ea73-0d57-4c1b-be43-e6ea3ab94822",
-      "name": "Ambiguous Message",
-      "webhookId": "9d1ce60d-d148-449b-bd34-09f02b385665",
-      "credentials": {
-        "whatsAppApi": {
-          "id": "iwUoaQqIF8NEeuFA",
-          "name": "WhatsApp account"
-        }
-      }
     },
     {
       "parameters": {
@@ -2760,122 +2650,6 @@
       ],
       "id": "081ce10e-a1ab-4bcc-9242-0227d513a552",
       "name": "Rehydrate Data2"
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}",
-        "textBody": "={{ $json.final_text }}",
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        -176,
-        -880
-      ],
-      "id": "ac215c42-3643-4d79-8bf8-32a0f7520d10",
-      "name": "Typo Error Message",
-      "webhookId": "6003044d-286a-4d01-9c31-2c6959ec4644",
-      "credentials": {
-        "whatsAppApi": {
-          "id": "iwUoaQqIF8NEeuFA",
-          "name": "WhatsApp account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT DISTINCT first_name \nFROM tb_student_registrations \nWHERE (\n    RIGHT(father_phone_no_1, 10) = RIGHT('{{ $json.wa_id }}', 10) OR \n    RIGHT(mother_phone_no_1, 10) = RIGHT('{{ $json.wa_id }}', 10) OR\n    RIGHT(guardian_phone_no_1, 10) = RIGHT('{{ $json.wa_id }}', 10) OR\n    RIGHT(sponsor_phone_no_1, 10) = RIGHT('{{ $json.wa_id }}', 10) OR\n    RIGHT(father_phone_no_2, 10) = RIGHT('{{ $json.wa_id }}', 10) OR \n    RIGHT(mother_phone_no_2, 10) = RIGHT('{{ $json.wa_id }}', 10) OR\n    RIGHT(guardian_phone_no_2, 10) = RIGHT('{{ $json.wa_id }}', 10) OR\n    RIGHT(sponsor_phone_no_2, 10) = RIGHT('{{ $json.wa_id }}', 10)\n)\nAND admission_status = 'Active';",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        -464,
-        -880
-      ],
-      "id": "63b5869a-7e76-411a-8af1-7417567c335a",
-      "name": "Fetch First Names",
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Reshape Gatekeeper Result\nconst gatekeeper = $('Reshape Gatekeeper Result').item.json;\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n  const intent = gatekeeper.intent.toUpperCase();\n  const shortLevel = gatekeeper.normalized_level\n    .replace('junior secondary', 'JSS')\n    .replace('senior secondary', 'SSS')\n    .replace('primary', 'PRI')\n    .toUpperCase();\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.original_query}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again using the format below:*\n\n💡 *Correct Format Example:*\n${intent}: [Full Name], ${shortLevel}, ${gatekeeper.academic_session}, ${gatekeeper.term}`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -320,
-        -880
-      ],
-      "id": "ba83f49d-8533-47e2-91e2-3a478cbac058",
-      "name": "Aggregate"
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}",
-        "textBody": "={{ $json.final_text }}",
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        -352,
-        -1904
-      ],
-      "id": "e8ea31da-5d9c-464d-ba2f-700a6cc04eba",
-      "name": "Typo Error Message1",
-      "webhookId": "6003044d-286a-4d01-9c31-2c6959ec4644",
-      "credentials": {
-        "whatsAppApi": {
-          "id": "iwUoaQqIF8NEeuFA",
-          "name": "WhatsApp account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT DISTINCT first_name \nFROM tb_student_registrations \nWHERE (\n    RIGHT(father_phone_no_1, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR \n    RIGHT(mother_phone_no_1, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR\n    RIGHT(guardian_phone_no_1, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR\n    RIGHT(sponsor_phone_no_1, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR\n    RIGHT(father_phone_no_2, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR \n    RIGHT(mother_phone_no_2, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR\n    RIGHT(guardian_phone_no_2, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10) OR\n    RIGHT(sponsor_phone_no_2, 10) = RIGHT('{{ $('Has caption?').item.json.contacts[0].wa_id }}', 10)\n)\nAND admission_status = 'Active';",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.5,
-      "position": [
-        -656,
-        -1904
-      ],
-      "id": "63c7d98e-26e7-445f-b146-26d39b18758f",
-      "name": "Fetch First Names1",
-      "credentials": {
-        "mySql": {
-          "id": "Vgb0ivPJ4mQWicSh",
-          "name": "MySQL account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const allItems = $input.all();\nconst namesArray = allItems.map(item => item.json.first_name).filter(name => name);\nconst isStranger = namesArray.length === 0;\n\n// Accessing the context from Gatekeeper Call (Receipt)\nconst gatekeeper = { raw_caption: $('Gatekeeper Call (Receipt)').item.json.raw_text };\n\nlet finalMessage = \"\";\n\nif (isStranger) {\n  finalMessage = `❌ *Access Denied*\n\nThis phone number is not registered in our system. For security reasons, I can only provide details to registered parents or guardians.\n\nPlease visit the school office to update your records.`;\n} else {\n  const namesList = namesArray.join('\\n- ');\n\n  finalMessage = `📘 *Bursar's Office: Verification*\n\nI couldn't find a student matching \"${gatekeeper.raw_caption}\" among your wards.\n\nBased on your phone number, I see students with the following first names:\n- ${namesList}\n\n*Please check the spellings and try again.*`;\n}\n\nreturn {\n  final_text: finalMessage\n};"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -512,
-        -1904
-      ],
-      "id": "e37ec338-2d2d-4816-a75a-045d4e36ab7b",
-      "name": "Aggregate1"
     },
     {
       "parameters": {
@@ -3691,7 +3465,9 @@
           "value": {
             "raw_text": "={{ $json.messages[0].image?.caption || $json.messages[0].document?.caption || '' }}",
             "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
-            "context": "receipt"
+            "context": "receipt",
+            "phone_number_id": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
+            "recipient_wa_id": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}"
           },
           "matchingColumns": [],
           "schema": [],
@@ -3756,7 +3532,9 @@
           "value": {
             "raw_text": "={{ $json.data?.text || '' }}",
             "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
-            "context": "receipt"
+            "context": "receipt",
+            "phone_number_id": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
+            "recipient_wa_id": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}"
           },
           "matchingColumns": [],
           "schema": [],
@@ -3809,23 +3587,6 @@
     },
     {
       "parameters": {
-        "operation": "send",
-        "phoneNumberId": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
-        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}",
-        "textBody": "=❌ *Access Denied*\n\nI couldn't verify a student matching the name/class you supplied against this phone number, or the details matched more than one student. Please visit the school office to update your records, or try again with the exact registered name and class.",
-        "additionalFields": {}
-      },
-      "id": "a2a2a2a2-0003-4002-8002-000000000003",
-      "name": "Not Authorized Message (Form)",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1.1,
-      "position": [
-        -896,
-        -1080
-      ]
-    },
-    {
-      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -3838,7 +3599,9 @@
           "value": {
             "raw_text": "={{ ($json.student_name || '') + ' ' + ($json.normalized_level || '') }}",
             "sender_phone": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
-            "context": "command"
+            "context": "command",
+            "phone_number_id": "={{ $('WhatsApp Trigger').first().json.metadata.phone_number_id }}",
+            "recipient_wa_id": "={{ $('WhatsApp Trigger').first().json.contacts[0].wa_id }}"
           },
           "matchingColumns": [],
           "schema": [],
@@ -3858,7 +3621,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Reshape the sub-workflow's generic {status, ...} result into the shape\n// If1 / Switch2 expect, merging in Normalizer's parsed intent/session/term.\nconst gk = $json;\nconst normalizer = $('Normalizer').item.json;\n\nreturn {\n  match_found: gk.status === 'found',\n  is_ambiguous: gk.status === 'ambiguous',\n  is_retry: normalizer.is_retry || false,\n\n  intent: normalizer.intent,\n  original_query: normalizer.student_name,\n  term: normalizer.term,\n  academic_session: normalizer.academic_session,\n\n  student_id: gk.student_id || null,\n  full_name: gk.full_name || null,\n  candidates: gk.candidates || [],\n\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
+        "jsCode": "// Reshape the sub-workflow's generic {status, ...} result into the shape\n// If1 / Switch1 expect, merging in Normalizer's parsed intent/session/term.\n// (match_found/is_ambiguous are now always true/false here since only \"found\"\n// results reach this node -- Gatekeeper Result (Command) already filtered out\n// not_found/ambiguous upstream. The old Switch2 that branched on those was\n// removed since two of its three branches could never fire.)\nconst gk = $json;\nconst normalizer = $('Normalizer').item.json;\n\nreturn {\n  match_found: gk.status === 'found',\n  is_ambiguous: gk.status === 'ambiguous',\n  is_retry: normalizer.is_retry || false,\n\n  intent: normalizer.intent,\n  original_query: normalizer.student_name,\n  term: normalizer.term,\n  academic_session: normalizer.academic_session,\n\n  student_id: gk.student_id || null,\n  full_name: gk.full_name || null,\n  candidates: gk.candidates || [],\n\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
       },
       "id": "a3a3a3a3-0002-4003-8003-000000000002",
       "name": "Reshape Gatekeeper Result",
@@ -3867,6 +3630,50 @@
       "position": [
         -832,
         -704
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c1c1c1c1-0001-4008-8008-000000000001",
+      "name": "Gatekeeper Rejected (No-Op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        -960
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c2c2c2c2-0001-4009-8009-000000000001",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "found",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c2c2c2c2-0002-4009-8009-000000000002",
+      "name": "Gatekeeper Result (Command)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -832,
+        -864
       ]
     }
   ],
@@ -4610,32 +4417,6 @@
         ]
       ]
     },
-    "Switch2": {
-      "main": [
-        [
-          {
-            "node": "Ambiguous Message",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fetch First Names",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Switch1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
     "AI Fuzzy Match": {
       "main": [
         [
@@ -4755,50 +4536,6 @@
         [
           {
             "node": "Get student details",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch First Names": {
-      "main": [
-        [
-          {
-            "node": "Aggregate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Aggregate": {
-      "main": [
-        [
-          {
-            "node": "Typo Error Message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch First Names1": {
-      "main": [
-        [
-          {
-            "node": "Aggregate1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Aggregate1": {
-      "main": [
-        [
-          {
-            "node": "Typo Error Message1",
             "type": "main",
             "index": 0
           }
@@ -5068,7 +4805,7 @@
         ],
         [
           {
-            "node": "Fetch First Names1",
+            "node": "Gatekeeper Rejected (No-Op)",
             "type": "main",
             "index": 0
           }
@@ -5097,7 +4834,7 @@
         ],
         [
           {
-            "node": "Not Authorized Message (Form)",
+            "node": "Gatekeeper Rejected (No-Op)",
             "type": "main",
             "index": 0
           }
@@ -5108,7 +4845,7 @@
       "main": [
         [
           {
-            "node": "Reshape Gatekeeper Result",
+            "node": "Gatekeeper Result (Command)",
             "type": "main",
             "index": 0
           }
@@ -5124,7 +4861,25 @@
             "index": 0
           },
           {
-            "node": "Switch2",
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Result (Command)": {
+      "main": [
+        [
+          {
+            "node": "Reshape Gatekeeper Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gatekeeper Rejected (No-Op)",
             "type": "main",
             "index": 0
           }

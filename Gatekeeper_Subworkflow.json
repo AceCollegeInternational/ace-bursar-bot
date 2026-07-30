@@ -5,9 +5,21 @@
       "parameters": {
         "workflowInputs": {
           "values": [
-            { "name": "raw_text" },
-            { "name": "sender_phone" },
-            { "name": "context" }
+            {
+              "name": "raw_text"
+            },
+            {
+              "name": "sender_phone"
+            },
+            {
+              "name": "context"
+            },
+            {
+              "name": "phone_number_id"
+            },
+            {
+              "name": "recipient_wa_id"
+            }
           ]
         }
       },
@@ -15,7 +27,10 @@
       "name": "Gatekeeper Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [-720, -400]
+      "position": [
+        -720,
+        -400
+      ]
     },
     {
       "parameters": {
@@ -25,7 +40,10 @@
       "name": "Extract Student Info",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-496, -400]
+      "position": [
+        -496,
+        -400
+      ]
     },
     {
       "parameters": {
@@ -39,23 +57,112 @@
       "name": "Gatekeeper Query",
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.5,
-      "position": [-272, -400],
+      "position": [
+        -272,
+        -400
+      ],
       "credentials": {
         "mySql": {
           "id": "Vgb0ivPJ4mQWicSh",
           "name": "MySQL account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "// Classify the (now un-LIMITed) result set.\nconst rows = $input.all().map(item => item.json).filter(r => r && r.student_id);\nconst context = $('Extract Student Info').item.json.context;\n\nif (rows.length === 0) {\n    return {\n        status: \"not_found\",\n        student_id: null,\n        full_name: null,\n        level_name: null,\n        candidates: [],\n        context\n    };\n}\n\nif (rows.length === 1) {\n    return {\n        status: \"found\",\n        student_id: rows[0].student_id,\n        full_name: rows[0].full_name,\n        level_name: rows[0].level_name,\n        candidates: [],\n        context\n    };\n}\n\nreturn {\n    status: \"ambiguous\",\n    student_id: null,\n    full_name: null,\n    level_name: null,\n    candidates: rows.map(r => ({\n        student_id: r.student_id,\n        full_name: r.full_name,\n        level_name: r.level_name\n    })),\n    context\n};"
+        "jsCode": "// Classify the (now un-LIMITed) result set.\n// Gatekeeper Query has alwaysOutputData=true so a genuine zero-row match still\n// produces one item -- but when there are truly zero rows, MySQL's node emits a\n// placeholder item like {\"success\": true} with no student_id. Filtering on\n// student_id below is what keeps that placeholder from being counted as a match.\nconst rows = $input.all().map(item => item.json).filter(r => r && r.student_id);\nconst context = $('Extract Student Info').item.json.context;\n\nif (rows.length === 0) {\n    return {\n        status: \"not_found\",\n        student_id: null,\n        full_name: null,\n        level_name: null,\n        candidates: [],\n        context\n    };\n}\n\nif (rows.length === 1) {\n    return {\n        status: \"found\",\n        student_id: rows[0].student_id,\n        full_name: rows[0].full_name,\n        level_name: rows[0].level_name,\n        candidates: [],\n        context\n    };\n}\n\nreturn {\n    status: \"ambiguous\",\n    student_id: null,\n    full_name: null,\n    level_name: null,\n    candidates: rows.map(r => ({\n        student_id: r.student_id,\n        full_name: r.full_name,\n        level_name: r.level_name\n    })),\n    context\n};"
       },
       "id": "8e4d9e31-b12d-4e4d-ce3d-4d5e6f708192",
       "name": "Classify Match",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-48, -400]
+      "position": [
+        -48,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b1b1b1b1-0001-4004-8004-000000000001",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "found",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b1b1b1-0002-4004-8004-000000000002",
+      "name": "Is Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const gk = $json; // { status, student_id, full_name, level_name, candidates, context }\nconst bursarPhone = \"+234 916 258 3300\";\n\nlet finalMessage = \"\";\n\nif (gk.status === \"not_found\") {\n  const retryHint = gk.context === \"receipt\"\n    ? 'Please resend the receipt with a clearer caption containing the full name and class (e.g. \"John Alabi, JSS2\").'\n    : 'Please resend your request with the correct full name and class (e.g. \"BALANCE: John Alabi, JSS2\").';\n\n  finalMessage = `❌ *Access Denied*\n\nWe couldn't find an active student matching that name/class linked to this phone number.\n\nThis usually means:\n- this phone number isn't on file as a parent/guardian/sponsor for that student, or\n- the name or class given doesn't match anyone active in our records.\n\n${retryHint}\n\n📞 Still stuck? Chat the Bursar's Office directly at ${bursarPhone}.`;\n} else if (gk.status === \"ambiguous\") {\n  const candidatesList = (gk.candidates || [])\n    .map(c => `- ${c.full_name} (${c.level_name})`)\n    .join('\\n');\n\n  const retryHint = gk.context === \"receipt\"\n    ? \"Please resend the receipt with the student's full name spelled out completely so we can tell them apart.\"\n    : \"Please reply with the student's full name (or another identifying detail) so we can tell them apart.\";\n\n  finalMessage = `📘 *Bursar's Office: Multiple Matches*\n\nWe found more than one student matching that name and class linked to this phone number:\n${candidatesList}\n\n${retryHint}\n\n📞 Need help? Chat the Bursar's Office directly at ${bursarPhone}.`;\n}\n\nreturn { ...gk, final_text: finalMessage };"
+      },
+      "id": "b2b2b2b2-0001-4005-8005-000000000001",
+      "name": "Build Rejection Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "={{ $('Gatekeeper Trigger').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Gatekeeper Trigger').item.json.recipient_wa_id }}",
+        "textBody": "={{ $json.final_text }}",
+        "additionalFields": {}
+      },
+      "id": "b3b3b3b3-0001-4006-8006-000000000001",
+      "name": "Send Rejection Message",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        624,
+        -280
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "iwUoaQqIF8NEeuFA",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const gk = $('Build Rejection Message').item.json;\n\nreturn {\n  status: gk.status,\n  student_id: gk.student_id,\n  full_name: gk.full_name,\n  level_name: gk.level_name,\n  candidates: gk.candidates,\n  context: gk.context\n};"
+      },
+      "id": "b4b4b4b4-0001-4007-8007-000000000001",
+      "name": "Return Rejection Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        -280
+      ]
     }
   ],
   "pinData": {},
@@ -63,21 +170,78 @@
     "Gatekeeper Trigger": {
       "main": [
         [
-          { "node": "Extract Student Info", "type": "main", "index": 0 }
+          {
+            "node": "Extract Student Info",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Extract Student Info": {
       "main": [
         [
-          { "node": "Gatekeeper Query", "type": "main", "index": 0 }
+          {
+            "node": "Gatekeeper Query",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Gatekeeper Query": {
       "main": [
         [
-          { "node": "Classify Match", "type": "main", "index": 0 }
+          {
+            "node": "Classify Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Match": {
+      "main": [
+        [
+          {
+            "node": "Is Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Found?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build Rejection Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Rejection Message": {
+      "main": [
+        [
+          {
+            "node": "Send Rejection Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Rejection Message": {
+      "main": [
+        [
+          {
+            "node": "Return Rejection Result",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
