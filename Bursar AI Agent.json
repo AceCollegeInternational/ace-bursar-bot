@@ -2342,92 +2342,6 @@
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.is_ambiguous === true }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    },
-                    "id": "9263d5f7-ff32-4211-9f3a-130b0321f550"
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "f6390f19-7205-4b7d-b2eb-924f115bb2fd",
-                    "leftValue": "={{ $json.match_found === false && !$json.is_retry }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "fadd23e1-1095-4f26-8647-5e72bd06c4e3",
-                    "leftValue": "={{ $json.match_found === true && $json.is_ambiguous === false }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [
-        -528,
-        -720
-      ],
-      "id": "83e7c290-eb5a-47fa-bdd7-1d965ef539f1",
-      "name": "Switch2"
-    },
-    {
-      "parameters": {
         "operation": "send",
         "phoneNumberId": "={{ $( 'WhatsApp Trigger' ).first().json.metadata.phone_number_id }}",
         "recipientPhoneNumber": "={{ $node[\"WhatsApp Trigger\"].json.messages[0].from }}",
@@ -3684,7 +3598,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Reshape the sub-workflow's generic {status, ...} result into the shape\n// If1 / Switch2 expect, merging in Normalizer's parsed intent/session/term.\nconst gk = $json;\nconst normalizer = $('Normalizer').item.json;\n\nreturn {\n  match_found: gk.status === 'found',\n  is_ambiguous: gk.status === 'ambiguous',\n  is_retry: normalizer.is_retry || false,\n\n  intent: normalizer.intent,\n  original_query: normalizer.student_name,\n  term: normalizer.term,\n  academic_session: normalizer.academic_session,\n\n  student_id: gk.student_id || null,\n  full_name: gk.full_name || null,\n  candidates: gk.candidates || [],\n\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
+        "jsCode": "// Reshape the sub-workflow's generic {status, ...} result into the shape\n// If1 / Switch1 expect, merging in Normalizer's parsed intent/session/term.\n// (match_found/is_ambiguous are now always true/false here since only \"found\"\n// results reach this node -- Gatekeeper Result (Command) already filtered out\n// not_found/ambiguous upstream. The old Switch2 that branched on those was\n// removed since two of its three branches could never fire.)\nconst gk = $json;\nconst normalizer = $('Normalizer').item.json;\n\nreturn {\n  match_found: gk.status === 'found',\n  is_ambiguous: gk.status === 'ambiguous',\n  is_retry: normalizer.is_retry || false,\n\n  intent: normalizer.intent,\n  original_query: normalizer.student_name,\n  term: normalizer.term,\n  academic_session: normalizer.academic_session,\n\n  student_id: gk.student_id || null,\n  full_name: gk.full_name || null,\n  candidates: gk.candidates || [],\n\n  template_matched: normalizer.template_matched,\n  normalized_level: normalizer.normalized_level,\n  wa_id: normalizer.wa_id\n};"
       },
       "id": "a3a3a3a3-0002-4003-8003-000000000002",
       "name": "Reshape Gatekeeper Result",
@@ -4461,20 +4375,6 @@
         ]
       ]
     },
-    "Switch2": {
-      "main": [
-        [],
-        [],
-        [
-          {
-            "node": "Switch1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
     "AI Fuzzy Match": {
       "main": [
         [
@@ -4919,7 +4819,7 @@
             "index": 0
           },
           {
-            "node": "Switch2",
+            "node": "Switch1",
             "type": "main",
             "index": 0
           }

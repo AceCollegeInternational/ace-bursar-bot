@@ -143,7 +143,13 @@
       "position": [
         624,
         -280
-      ]
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "iwUoaQqIF8NEeuFA",
+          "name": "WhatsApp account"
+        }
+      }
     },
     {
       "parameters": {
